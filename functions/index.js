@@ -5,6 +5,7 @@ const cors = require('cors');
 
 admin.initializeApp();
 const app = express();
+app.use(cors());
 // app.use(require('connect').bodyParser());
 const db = admin.firestore();
 
@@ -107,6 +108,26 @@ app.get('/students/:id', (req, res) => {
     })();
 });
 
+//get student by email
+app.get('/students/email/:email', (req, res) => {
+    (async () => {
+        try {
+            const snapshot = await db.collection('students').get();
+            let student = [];
+
+            snapshot.forEach(doc => {
+                let id = doc.id;
+                let data = doc.data();
+                if (req.params.email === data.Email) {
+                    student.push({ id, data });
+                }
+            });
+            res.status(200).send(student);
+        } catch (error) {
+            return res.status(500).send(error);
+        }
+    })();
+});
 
 
 //get all lecturers
@@ -124,6 +145,28 @@ app.get('/lecturers', async (req, res) => {
         console.log(error);
         return res.status(500).send(error);
     }
+});
+
+
+//get lecturers by email
+app.get('/lecturers/email/:email', (req, res) => {
+    (async () => {
+        try {
+            const snapshot = await db.collection('lecturers').get();
+            let lecture = [];
+
+            snapshot.forEach(doc => {
+                let id = doc.id;
+                let data = doc.data();
+                if (req.params.email === data.Email) {
+                    lecture.push({ id, data });
+                }
+            });
+            res.status(200).send(lecture);
+        } catch (error) {
+            return res.status(500).send(error);
+        }
+    })();
 });
 
 
@@ -172,7 +215,6 @@ app.put('/students/:id', async (req, res) => {
 app.put('/modules/:id', async (req, res) => {
     try {
         const document = db.collection('modules').doc(req.params.id);
-
         await document.update({
             Name: req.body.Name
         });
@@ -216,6 +258,8 @@ app.post('/classes', (req, res) => {
         }
     })();
 });
+
+
 
 
 
