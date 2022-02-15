@@ -1,1 +1,1 @@
-# classManagementAPi
+# Class Management API
