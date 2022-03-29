@@ -6,74 +6,8 @@ admin.initializeApp();
 const app = express();
 app.use(cors());
 const db = admin.firestore();
-// const googleStorage = require('@google-cloud/storage');
-// const Multer = require('multer');
-
-// // const storage = googleStorage({
-// //     projectId: "attendancetracker-a53a9",
-// //     keyFilename: "AIzaSyC1IMED0fuuCze3BwdGft3beKSiFpZ4zM8"
-// // });
-
-// // const bucket = storage.bucket("attendancetracker-a53a9.appspot.com");
-
-// const multer = Multer({
-//     storage: Multer.memoryStorage(),
-//     limits: {
-//         fileSize: 5 * 1024 * 1024 // no larger than 5mb, you can change as needed.
-//     }
-// });
-
-/**
- * Adding new file to the storage
- */
-// app.post('/upload', multer.single('file'), (req, res) => {
-//     console.log('Upload Image');
-
-//     let file = req.file;
-//     if (file) {
-//         uploadImageToStorage(file).then((success) => {
-//             res.status(200).send({
-//                 status: 'success'
-//             });
-//         }).catch((error) => {
-//             console.error(error);
-//         });
-//     }
-// });
-
-/**
- * Upload the image file to Google Storage
- * @param {File} file object that will be uploaded to Google Storage
- */
-// const uploadImageToStorage = (file) => {
-//     return new Promise((resolve, reject) => {
-//         if (!file) {
-//             reject('No image file');
-//         }
-//         let newFileName = `${file.originalname}_${Date.now()}`;
-
-//         let fileUpload = bucket.file(newFileName);
-
-//         const blobStream = fileUpload.createWriteStream({
-//             metadata: {
-//                 contentType: file.mimetype
-//             }
-//         });
-
-//         blobStream.on('error', (error) => {
-//             reject('Something is wrong! Unable to upload at the moment.');
-//         });
-
-//         blobStream.on('finish', () => {
-//             // The public URL can be used to directly access the file via HTTP.
-//             const url = format(`https://storage.googleapis.com/${bucket.name}/${fileUpload.name}`);
-//             resolve(url);
-//         });
-
-//         blobStream.end(file.buffer);
-//     });
-// }
-//Timetables method
+const FCM = require('fcm-node');
+const serverKey = 'AAAAViCbxF4:APA91bE21QG3Esq3h8HEEd8dQ0UyjGKBlI6A5-yhJPodJXsb9vPHowkcz2Q0Eh4cTZhjoU9jTRUcUcXaEecJFO1D3geelMEwrmRctvHHItcm3GPQJVYhU3Kfr_Nkp1BpLFsSoI1LSy7T' //put your server key here
 
 //get all timetables
 app.get('/timetables', async (req, res) => {
@@ -295,9 +229,6 @@ app.post('/classes', async (req, res) => {
 app.patch('/:role/:id', async (req, res) => {
     try {
         const document = db.collection(req.params.role).doc(req.params.id);
-        console.log(req.body);
-        console.log(req.params.role);
-        console.log(req.params.id);
         await document.update({
             AddressLine1: req.body.AddressLine1,
             AddressLine2: req.body.AddressLine2,
@@ -331,41 +262,43 @@ app.put('/modules/:id', async (req, res) => {
 });
 
 //update timetable
-// app.patch('/timetables/:date/:class_id', async (req, res) => {
+// app.get('/timetables/:date/:class_id', async (req, res) => {
 //     try {
 //         //get class in timetables this week set it to false
-//         const document1 = db.collection('timetables').doc(req.params.date).where('class_id', '==', req.params.class_id);
+//         // const document1 = await db.collection('timetables').doc(req.params.date).get();
 
-//         //create a new class in classes table to store new class details
-//         // const document2 = db.collection('classes').doc().set(req.body.newClass);
-//         const document3 = db.collection('timetables').doc(req.params.date).update(req.body.newTimetable);
 
-//         //update the current class to false and add a new class into it
-//         await document1.update({
-//             active: false
+//         const document1 = await db.collection('timetables').where('timetable', "array-contains-any", [{ class_id: '1' }]).get();
+//         let timetable = []
+//         // if (document1.data().class_id == req.params.class_id) {
+//         //     let id = doc.id;
+//         //     let data = doc.data();
+//         //     console.log(data)
+//         //     timetable.push({ id, data })
+
+//         // }
+//         document1.forEach((doc) => {
+//             console.log(doc.id)
+//             console.log(doc.data())
+//             // timetable.push({ id, })
 //         })
-//         return res.status(204).send();
+
+// console.log(document1.data())
+//create a new class in classes table to store new class details
+// const document2 = db.collection('classes').doc().set(req.body.newClass);
+// const document3 = db.collection('timetables').doc(req.params.date).update(req.body.newTimetable);
+
+//update the current class to false and add a new class into it
+// await document1.update({
+//     active: false
+// })
+//         return res.status(200).send(timetable);
 //     } catch (error) {
 //         return res.status(500).send(error.message);
 //     }
 // });
 
 
-// app.get('/timetables/test/test', async (req, res) => {
-//     try {
-//         const document1 = await db.collection('timetables').where('class_id', 'array-contains', '704o2zHFJY6IENYO3diY').get();
-//         let classes = [];
-//         document1.forEach(doc => {
-//             let id = doc.id;
-//             let data = doc.data();
-//             classes.push({ id, data });
-//         });
-//         // let response = document1.data();
-//         res.status(200).send(classes);
-//     } catch (error) {
-//         return res.status(500).send(error.message);
-//     }
-// });
 
 
 exports.api = functions.runWith({ minInstances: 0 }).https.onRequest(app);
@@ -389,4 +322,34 @@ exports.scheduledFunction = functions.pubsub.schedule('00 00 * * 7').timeZone("E
 
 
 
+exports.fcm = functions.post('/send-push', (req, res) => {
+    const fcm = new FCM(serverKey);
 
+    const message = {
+        registration_ids: [...req.body.userFcmToken],  // array required
+        notification: {
+            title: req.body.notificationTitle,
+            body: req.body.notificationBody,
+            sound: "default",
+            icon: "ic_launcher",
+            badge: req.body.notificationBadge ? req.body.notificationBadge : "1",
+            click_action: 'FCM_PLUGIN_ACTIVITY',
+        },
+        priority: req.body.notificationPriority ? req.body.notificationPriority : 'high',
+        data: {
+            action: req.body.actionType, // Action Type
+            payload: req.body.payload // payload
+        }
+    }
+
+    fcm.send(message, (err, response) => {
+        if (err) {
+            console.log("Something has gone wrong!", JSON.stringify(err));
+            res.send(err);
+        } else {
+            console.log("Successfully sent with response: ", response);
+            res.send(response)
+        }
+    })
+
+});
