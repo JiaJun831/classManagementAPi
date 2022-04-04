@@ -81,6 +81,31 @@ app.get('/students/email/:email', async (req, res) => {
     }
 });
 
+// get student module
+app.get('/getStudentModuleList', async (req, res) => {
+    try {
+        const snapshot = await db.collection('students').get();
+        let student = [];
+        snapshot.forEach(doc => {
+            let id = doc.id;
+            let data = doc.data();
+            student.push({ id, data });
+        });
+
+        const snapshot2 = await db.collection('courses').get();
+        snapshot2.forEach(doc => {
+            for (let i = 0; i < student.length; i++) {
+                if (student[i].data.CourseID == doc.id) {
+                    student[i].data.CourseID = doc.data().moduleList;
+                }
+            }
+        })
+        res.status(200).send(student);
+    } catch (error) {
+        return res.status(500).send(error.message);
+    }
+})
+
 //get all lecturers
 app.get('/lecturers', async (req, res) => {
     try {
@@ -186,7 +211,7 @@ app.post('/timetables', async (req, res) => {
     }
 });
 
-//add new timetable
+//add new students
 app.post('/students', async (req, res) => {
     try {
         const student = req.body;
@@ -262,7 +287,8 @@ app.put('/modules/:id', async (req, res) => {
 });
 
 //update timetable
-app.get('/timetables/:date/:class_id', async (req, res) => {
+app.post('/timetables/:date/:class_id', async (req, res) => {
+
     try {
         const snapshot = db.collection('timetables').doc(req.params.date);
 
@@ -277,21 +303,25 @@ app.get('/timetables/:date/:class_id', async (req, res) => {
                 break;
             }
         }
-        let newClass = JSON.parse(req.body.newClass);
-        let newClassId;
-        await db.collection('classes').add(newClass).then(function (res) {
-            newClassId = res.id;
-        })
-        let newRecordTimetable = {
-            students: students,
-            active: true,
-            class_id: newClassId
 
+        if (students.length > 0) {
+            let newClassId;
+            await db.collection('classes').add(req.body.newClass).then(function (res) {
+                newClassId = res.id;
+            })
+            let newRecordTimetable = {
+                students: students,
+                active: true,
+                class_id: newClassId
+
+            }
+            timetable.push(newRecordTimetable);
+            result.timetable = timetable;
+            await snapshot.set(result);
+            return res.status(200).send();
         }
-        timetable.push(newRecordTimetable);
-        result.timetable = timetable;
-        await snapshot.set(result);
-        return res.status(200).send();
+
+        return res.status(500).send("Data not found");
     } catch (error) {
         return res.status(500).send(error.message);
     }
