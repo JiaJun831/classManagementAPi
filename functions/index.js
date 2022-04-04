@@ -6,74 +6,8 @@ admin.initializeApp();
 const app = express();
 app.use(cors());
 const db = admin.firestore();
-// const googleStorage = require('@google-cloud/storage');
-// const Multer = require('multer');
-
-// // const storage = googleStorage({
-// //     projectId: "attendancetracker-a53a9",
-// //     keyFilename: "AIzaSyC1IMED0fuuCze3BwdGft3beKSiFpZ4zM8"
-// // });
-
-// // const bucket = storage.bucket("attendancetracker-a53a9.appspot.com");
-
-// const multer = Multer({
-//     storage: Multer.memoryStorage(),
-//     limits: {
-//         fileSize: 5 * 1024 * 1024 // no larger than 5mb, you can change as needed.
-//     }
-// });
-
-/**
- * Adding new file to the storage
- */
-// app.post('/upload', multer.single('file'), (req, res) => {
-//     console.log('Upload Image');
-
-//     let file = req.file;
-//     if (file) {
-//         uploadImageToStorage(file).then((success) => {
-//             res.status(200).send({
-//                 status: 'success'
-//             });
-//         }).catch((error) => {
-//             console.error(error);
-//         });
-//     }
-// });
-
-/**
- * Upload the image file to Google Storage
- * @param {File} file object that will be uploaded to Google Storage
- */
-// const uploadImageToStorage = (file) => {
-//     return new Promise((resolve, reject) => {
-//         if (!file) {
-//             reject('No image file');
-//         }
-//         let newFileName = `${file.originalname}_${Date.now()}`;
-
-//         let fileUpload = bucket.file(newFileName);
-
-//         const blobStream = fileUpload.createWriteStream({
-//             metadata: {
-//                 contentType: file.mimetype
-//             }
-//         });
-
-//         blobStream.on('error', (error) => {
-//             reject('Something is wrong! Unable to upload at the moment.');
-//         });
-
-//         blobStream.on('finish', () => {
-//             // The public URL can be used to directly access the file via HTTP.
-//             const url = format(`https://storage.googleapis.com/${bucket.name}/${fileUpload.name}`);
-//             resolve(url);
-//         });
-
-//         blobStream.end(file.buffer);
-//     });
-// }
-//Timetables method
+// const FCM = require('fcm-node');
+// const serverKey = 'AAAAViCbxF4:APA91bE21QG3Esq3h8HEEd8dQ0UyjGKBlI6A5-yhJPodJXsb9vPHowkcz2Q0Eh4cTZhjoU9jTRUcUcXaEecJFO1D3geelMEwrmRctvHHItcm3GPQJVYhU3Kfr_Nkp1BpLFsSoI1LSy7T' //put your server key here
 
 //get all timetables
 app.get('/timetables', async (req, res) => {
@@ -146,6 +80,31 @@ app.get('/students/email/:email', async (req, res) => {
         return res.status(500).send(error.message);
     }
 });
+
+// get student module
+app.get('/getStudentModuleList', async (req, res) => {
+    try {
+        const snapshot = await db.collection('students').get();
+        let student = [];
+        snapshot.forEach(doc => {
+            let id = doc.id;
+            let data = doc.data();
+            student.push({ id, data });
+        });
+
+        const snapshot2 = await db.collection('courses').get();
+        snapshot2.forEach(doc => {
+            for (let i = 0; i < student.length; i++) {
+                if (student[i].data.CourseID == doc.id) {
+                    student[i].data.CourseID = doc.data().moduleList;
+                }
+            }
+        })
+        res.status(200).send(student);
+    } catch (error) {
+        return res.status(500).send(error.message);
+    }
+})
 
 //get all lecturers
 app.get('/lecturers', async (req, res) => {
@@ -252,7 +211,7 @@ app.post('/timetables', async (req, res) => {
     }
 });
 
-//add new timetable
+//add new students
 app.post('/students', async (req, res) => {
     try {
         const student = req.body;
@@ -295,9 +254,6 @@ app.post('/classes', async (req, res) => {
 app.patch('/:role/:id', async (req, res) => {
     try {
         const document = db.collection(req.params.role).doc(req.params.id);
-        console.log(req.body);
-        console.log(req.params.role);
-        console.log(req.params.id);
         await document.update({
             AddressLine1: req.body.AddressLine1,
             AddressLine2: req.body.AddressLine2,
@@ -331,56 +287,62 @@ app.put('/modules/:id', async (req, res) => {
 });
 
 //update timetable
-// app.patch('/timetables/:date/:class_id', async (req, res) => {
-//     try {
-//         //get class in timetables this week set it to false
-//         const document1 = db.collection('timetables').doc(req.params.date).where('class_id', '==', req.params.class_id);
+app.post('/timetables/:date/:class_id', async (req, res) => {
 
-//         //create a new class in classes table to store new class details
-//         // const document2 = db.collection('classes').doc().set(req.body.newClass);
-//         const document3 = db.collection('timetables').doc(req.params.date).update(req.body.newTimetable);
+    try {
+        const snapshot = db.collection('timetables').doc(req.params.date);
 
-//         //update the current class to false and add a new class into it
-//         await document1.update({
-//             active: false
-//         })
-//         return res.status(204).send();
-//     } catch (error) {
-//         return res.status(500).send(error.message);
-//     }
-// });
+        const getData = await snapshot.get();
+        let result = getData.data();
+        let students = [];
+        let timetable = result.timetable;
+        for (let res of timetable) {
+            if (res.class_id == req.params.class_id && res.active != false) {
+                res.active = false;
+                students = res.students;
+                break;
+            }
+        }
 
+        if (students.length > 0) {
+            let newClassId;
+            await db.collection('classes').add(req.body.newClass).then(function (res) {
+                newClassId = res.id;
+            })
+            let newRecordTimetable = {
+                students: students,
+                active: true,
+                class_id: newClassId
 
-// app.get('/timetables/test/test', async (req, res) => {
-//     try {
-//         const document1 = await db.collection('timetables').where('class_id', 'array-contains', '704o2zHFJY6IENYO3diY').get();
-//         let classes = [];
-//         document1.forEach(doc => {
-//             let id = doc.id;
-//             let data = doc.data();
-//             classes.push({ id, data });
-//         });
-//         // let response = document1.data();
-//         res.status(200).send(classes);
-//     } catch (error) {
-//         return res.status(500).send(error.message);
-//     }
-// });
+            }
+            timetable.push(newRecordTimetable);
+            result.timetable = timetable;
+            await snapshot.set(result);
+            return res.status(200).send();
+        }
 
+        return res.status(500).send("Data not found");
+    } catch (error) {
+        return res.status(500).send(error.message);
+    }
+
+});
 
 exports.api = functions.runWith({ minInstances: 0 }).https.onRequest(app);
 
-exports.scheduledFunction = functions.pubsub.schedule('00 00 * * 7').timeZone("Europe/Dublin").onRun(async context => {
+const updateAttendance = require('./attendanceFunction');
+exports.updateAttendance = updateAttendance.attendanceFunctions;
+
+exports.scheduledFunction = functions.pubsub.schedule('00 00 * * 1').timeZone("Europe/Dublin").onRun(async context => {
     try {
         const today = new Date();
-        const year = today.getFullYear();
-        const month = today.getMonth() + 1;
-        const day = today.getDate();
-        const updateDate = year + "-" + month + "-" + day;
-
+        const lastSunday = today.getDate() - today.getDay();
+        const sunday = new Date(today.setDate(lastSunday)).toJSON();
+        const dateOnly = sunday.split("T");
+        const date = dateOnly[0];
         const snapshot = await db.collection('timetables').doc("default").get();
         let timetable = snapshot.data();
-        const newDocument = db.collection('timetables').doc(updateDate).set(timetable);
+        const newDocument = db.collection('timetables').doc(date).set(timetable);
         return console.log("success");
     } catch (error) {
         return console.log(error.message);
@@ -389,4 +351,35 @@ exports.scheduledFunction = functions.pubsub.schedule('00 00 * * 7').timeZone("E
 
 
 
+// exports.fcm = functions.post('/send-push', (req, res) => {
+//     const fcm = new FCM(serverKey);
 
+//     const message = {
+//         registration_ids: [...req.body.userFcmToken],  // array required
+//         notification: {
+//             title: req.body.notificationTitle,
+//             body: req.body.notificationBody,
+//             sound: "default",
+//             icon: "ic_launcher",
+//             badge: req.body.notificationBadge ? req.body.notificationBadge : "1",
+//             click_action: 'FCM_PLUGIN_ACTIVITY',
+//
+//    },
+//         priority: req.body.notificationPriority ? req.body.notificationPriority : 'high',
+//         data: {
+//             action: req.body.actionType, // Action Type
+//             payload: req.body.payload // payload
+//         }
+//     }
+
+//     fcm.send(message, (err, response) => {
+//         if (err) {
+//             console.log("Something has gone wrong!", JSON.stringify(err));
+//             res.send(err);
+//         } else {
+//             console.log("Successfully sent with response: ", response);
+//             res.send(response)
+//         }
+//     })
+
+// });
