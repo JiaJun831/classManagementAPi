@@ -2,10 +2,17 @@ const functions = require("firebase-functions");
 const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
-admin.initializeApp();
+const serviceAccount = require('./attendancetracker-a53a9-firebase-adminsdk-9lkrx-6c1c4efdfd.json');
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+}
+);
 const app = express();
 app.use(cors());
 const db = admin.firestore();
+const fcm = admin.messaging();
+
+// const getMessaging = require('firebase/messaging/sw')
 // const FCM = require('fcm-node');
 // const serverKey = 'AAAAViCbxF4:APA91bE21QG3Esq3h8HEEd8dQ0UyjGKBlI6A5-yhJPodJXsb9vPHowkcz2Q0Eh4cTZhjoU9jTRUcUcXaEecJFO1D3geelMEwrmRctvHHItcm3GPQJVYhU3Kfr_Nkp1BpLFsSoI1LSy7T' //put your server key here
 
@@ -205,7 +212,7 @@ app.post('/timetables', async (req, res) => {
         const date = timetable.date;
         const result = JSON.parse(timetable.field);
         await db.collection('timetables').doc(date).set(result);
-        res.status(201).send("Success");
+        res.status(200).send("Success");
     } catch (error) {
         return res.status(500).send(error.message);
     }
@@ -218,7 +225,7 @@ app.post('/students', async (req, res) => {
         const id = student.id;
         const result = JSON.parse(student.field);
         await db.collection('students').doc(id).set(result);
-        res.status(201).send("Success");
+        res.status(200).send("Success");
     } catch (error) {
         return res.status(500).send(error.message);
     }
@@ -233,19 +240,37 @@ app.post('/notificationToken', async (req, res) => {
             token: req.body.token
         }
         await db.collection('notificationToken').doc().set(postData);
-        res.status(201).send("Success");
+        res.status(200).send("Success");
     } catch (error) {
         return res.status(500).send(error.message);
     }
 });
 
-//add new classes
-app.post('/classes', async (req, res) => {
+app.get('/notificationToken/:userid', async (req, res) => {
     try {
-        const classes = req.body;
-        const result = JSON.parse(classes.field);
-        await db.collection('classes').doc().set(result);
-        res.status(201).send("Success");
+        let token;
+        const snapshot = await db.collection('notificationToken').where('userID', '==', req.params.userid).get();
+        snapshot.forEach((res) => {
+            token = { token: res.data().token, userID: res.data().userID }
+        })
+        console.log(token)
+        res.status(200).send(token);
+    } catch (error) {
+        return res.status(500).send(error.message);
+    }
+});
+
+//get all classes
+app.get('/classes', async (req, res) => {
+    try {
+        const snapshot = await db.collection('classes').get();
+        let classes = [];
+        snapshot.forEach(doc => {
+            let id = doc.id;
+            let data = doc.data();
+            classes.push({ id, data });
+        });
+        res.status(200).send(classes);
     } catch (error) {
         return res.status(500).send(error.message);
     }
@@ -286,12 +311,11 @@ app.put('/modules/:id', async (req, res) => {
     }
 });
 
+
 //update timetable
 app.post('/timetables/:date/:class_id', async (req, res) => {
-
     try {
         const snapshot = db.collection('timetables').doc(req.params.date);
-
         const getData = await snapshot.get();
         let result = getData.data();
         let students = [];
@@ -306,6 +330,7 @@ app.post('/timetables/:date/:class_id', async (req, res) => {
 
         if (students.length > 0) {
             let newClassId;
+            delete req.body.newClass.module_name;
             await db.collection('classes').add(req.body.newClass).then(function (res) {
                 newClassId = res.id;
             })
@@ -313,11 +338,40 @@ app.post('/timetables/:date/:class_id', async (req, res) => {
                 students: students,
                 active: true,
                 class_id: newClassId
-
             }
+            console.log(req.body.newClass)
             timetable.push(newRecordTimetable);
             result.timetable = timetable;
             await snapshot.set(result);
+
+            const courses = await db.collection('courses').get();
+            let topic;
+            courses.forEach(doc => {
+                let data = doc.data();
+                for (let i = 0; i < data.moduleList.length; i++) {
+                    if (data.moduleList[i] == req.body.newClass.module_id) {
+                        topic = data.name
+                    }
+                }
+            });
+            console.log(topic)
+            let message;
+            if (req.params.date == "default") {
+                message = {
+                    notification: {
+                        title: `Timetable changes for Semester`,
+                        body: `Module : ${req.body.newClass.module_name} \n Day : ${req.body.newClass.day} \n Time : ${req.body.newClass.start_time} - ${req.body.newClass.end_time} \n Classroom : ${req.body.newClass.classroom}`
+                    },
+                };
+            } else {
+                message = {
+                    notification: {
+                        title: `Timetable changes for Week -  ${req.params.date}`,
+                        body: `Module : ${topic} \n Day : ${req.body.newClass.timeslot.day} \n Time : ${req.body.newClass.timeslot.start_time} - ${req.body.newClass.timeslot.end_time} \n Classroom : ${req.body.newClass.timeslot.classroom}`
+                    },
+                };
+            }
+            sendNotification(topic.replace(/\s/g, ''), message);
             return res.status(200).send();
         }
 
@@ -328,17 +382,35 @@ app.post('/timetables/:date/:class_id', async (req, res) => {
 
 });
 
-exports.api = functions.runWith({ minInstances: 0 }).https.onRequest(app);
+function sendNotification(topic, message) {
+    return admin.messaging().sendToTopic(topic, message)
+        .then((response) => {
+            // Response is a message ID string.
+            console.log('Successfully sent message:', response);
+        })
+        .catch((error) => {
+            console.log('Error sending message:', error);
+        });
+}
+
+
+exports.api = functions.runWith({ minInstances: 1 }).https.onRequest(app);
 
 const updateAttendance = require('./attendanceFunction');
 exports.updateAttendance = updateAttendance.attendanceFunctions;
 
-exports.scheduledFunction = functions.pubsub.schedule('00 00 * * 1').timeZone("Europe/Dublin").onRun(async context => {
+exports.scheduledFunction = functions.pubsub.schedule('00 01 * * 0').timeZone("Europe/Dublin").onRun(async context => {
     try {
         const today = new Date();
+        // Get last sunday date
         const lastSunday = today.getDate() - today.getDay();
-        const sunday = new Date(today.setDate(lastSunday)).toJSON();
-        const dateOnly = sunday.split("T");
+        let sunday = new Date(today.setDate(lastSunday));
+        // gettimezoneoffset
+        const final = sunday.setTime(
+            sunday.getTime() - new Date().getTimezoneOffset() * 60 * 1000
+        );
+        const result = new Date(final).toJSON();
+        const dateOnly = result.split('T');
         const date = dateOnly[0];
         const snapshot = await db.collection('timetables').doc("default").get();
         let timetable = snapshot.data();
@@ -351,35 +423,3 @@ exports.scheduledFunction = functions.pubsub.schedule('00 00 * * 1').timeZone("E
 
 
 
-// exports.fcm = functions.post('/send-push', (req, res) => {
-//     const fcm = new FCM(serverKey);
-
-//     const message = {
-//         registration_ids: [...req.body.userFcmToken],  // array required
-//         notification: {
-//             title: req.body.notificationTitle,
-//             body: req.body.notificationBody,
-//             sound: "default",
-//             icon: "ic_launcher",
-//             badge: req.body.notificationBadge ? req.body.notificationBadge : "1",
-//             click_action: 'FCM_PLUGIN_ACTIVITY',
-//
-//    },
-//         priority: req.body.notificationPriority ? req.body.notificationPriority : 'high',
-//         data: {
-//             action: req.body.actionType, // Action Type
-//             payload: req.body.payload // payload
-//         }
-//     }
-
-//     fcm.send(message, (err, response) => {
-//         if (err) {
-//             console.log("Something has gone wrong!", JSON.stringify(err));
-//             res.send(err);
-//         } else {
-//             console.log("Successfully sent with response: ", response);
-//             res.send(response)
-//         }
-//     })
-
-// });
