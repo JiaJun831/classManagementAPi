@@ -184,6 +184,22 @@ app.post('/classes/module', async (req, res) => {
 });
 
 //get course by courseID
+app.get('/courses', async (req, res) => {
+    try {
+        const snapshot = await db.collection('courses').get();
+        let course = [];
+        snapshot.forEach(doc => {
+            let id = doc.id;
+            let data = doc.data();
+            course.push({ id, data });
+        });
+        res.status(200).send(course);
+    } catch (error) {
+        return res.status(500).send(error.message);
+    }
+})
+
+//get course by courseID
 app.get('/courses/:courseID', async (req, res) => {
     try {
         const snapshot = await db.collection('courses').doc(req.params.courseID).get();
@@ -339,7 +355,6 @@ app.post('/timetables/:date/:class_id', async (req, res) => {
                 active: true,
                 class_id: newClassId
             }
-            console.log(req.body.newClass)
             timetable.push(newRecordTimetable);
             result.timetable = timetable;
             await snapshot.set(result);
