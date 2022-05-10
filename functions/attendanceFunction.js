@@ -6,6 +6,7 @@ const attendanceApp = express();
 attendanceApp.use(cors());
 const db = admin.firestore();
 
+
 //update attendance
 attendanceApp.get('/updateTimetables/:date/:class_id/:student_id', async (req, res) => {
     try {
@@ -17,14 +18,12 @@ attendanceApp.get('/updateTimetables/:date/:class_id/:student_id', async (req, r
         for (let res of timetable) {
             if (res.class_id == req.params.class_id && res.active == true) {
                 for (let student of res.students) {
-                    console.log(student.student_id)
                     if (student.student_id == req.params.student_id) {
                         student.attendance = true;
                         break;
                     }
                 }
             }
-
         }
         await snapshot.set(result, { merge: true });
         return res.status(200).send();
@@ -45,17 +44,20 @@ attendanceApp.get('/timetables/attendance/:student_id', async (req, res) => {
             let data = doc.data();
             timetables.push({ id, data });
         });
+
         let count = 0;
         let classCount = 0;
         for (let week of timetables) {
             if (week.id != "default") {
                 for (let studentList of week.data.timetable) {
-                    for (let student of studentList.students) {
-                        if (student.student_id == req.params.student_id) {
-                            classCount++;
-                        }
-                        if (student.student_id == req.params.student_id && student.attendance == true) {
-                            count++;
+                    if (studentList.active == true) {
+                        for (let student of studentList.students) {
+                            if (student.student_id == req.params.student_id) {
+                                classCount++;
+                            }
+                            if (student.student_id == req.params.student_id && student.attendance == true) {
+                                count++;
+                            }
                         }
                     }
                 }
@@ -89,17 +91,21 @@ attendanceApp.get('/timetables/attendance/:student_id/:module_id', async (req, r
         })
         let count = 0;
         let classCount = 0;
-        for (let week of timetables) {
-            if (week.id != "default") {
-                for (let studentList of week.data.timetable) {
-                    for (let i = 0; i < classes.length; i++) {
-                        if (studentList.class_id == classes[i]) {
-                            for (let student of studentList.students) {
-                                if (student.student_id == req.params.student_id) {
-                                    classCount++;
-                                }
-                                if (student.student_id == req.params.student_id && student.attendance == true) {
-                                    count++;
+        if (classes.length > 0) {
+            for (let week of timetables) {
+                if (week.id != "default") {
+                    for (let studentList of week.data.timetable) {
+                        if (studentList.active == true) {
+                            for (let i = 0; i < classes.length; i++) {
+                                if (studentList.class_id == classes[i]) {
+                                    for (let student of studentList.students) {
+                                        if (student.student_id == req.params.student_id) {
+                                            classCount++;
+                                        }
+                                        if (student.student_id == req.params.student_id && student.attendance == true) {
+                                            count++;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -107,10 +113,17 @@ attendanceApp.get('/timetables/attendance/:student_id/:module_id', async (req, r
                     }
                 }
             }
+        } else {
+            return res.status(200).send({ percentage: "N/A" });
         }
 
         let percentage = (count / classCount) * 100;
-        return res.status(200).send(percentage.toFixed(2));
+        console.log(percentage);
+        if (!isNaN(percentage)) {
+            return res.status(200).send({ percentage: percentage.toFixed(2) });
+        } else {
+            return res.status(200).send({ percentage: "N/A" });
+        }
     } catch (error) {
         return res.status(500).send(error.message);
     }
@@ -138,19 +151,19 @@ attendanceApp.get('/timetables/weekly/attendance/:student_id/:week', async (req,
         for (let week of timetables) {
             if (week.id == req.params.week) {
                 for (let studentList of week.data.timetable) {
-                    for (let student of studentList.students) {
-                        if (student.student_id == req.params.student_id) {
-                            classCount++;
-                        }
-                        if (student.student_id == req.params.student_id && student.attendance == true) {
-                            count++;
+                    if (studentList.active == true) {
+                        for (let student of studentList.students) {
+                            if (student.student_id == req.params.student_id) {
+                                classCount++;
+                            }
+                            if (student.student_id == req.params.student_id && student.attendance == true) {
+                                count++;
+                            }
                         }
                     }
                 }
             }
         }
-        console.log(classCount)
-        console.log(count)
         let percentage = (count / classCount) * 100;
         return res.status(200).send(percentage.toFixed(2));
     } catch (error) {
