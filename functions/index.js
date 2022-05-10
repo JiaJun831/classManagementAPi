@@ -12,9 +12,6 @@ app.use(cors());
 const db = admin.firestore();
 const fcm = admin.messaging();
 
-// const getMessaging = require('firebase/messaging/sw')
-// const FCM = require('fcm-node');
-// const serverKey = 'AAAAViCbxF4:APA91bE21QG3Esq3h8HEEd8dQ0UyjGKBlI6A5-yhJPodJXsb9vPHowkcz2Q0Eh4cTZhjoU9jTRUcUcXaEecJFO1D3geelMEwrmRctvHHItcm3GPQJVYhU3Kfr_Nkp1BpLFsSoI1LSy7T' //put your server key here
 
 //get all timetables
 app.get('/timetables', async (req, res) => {
@@ -183,7 +180,7 @@ app.post('/classes/module', async (req, res) => {
     }
 });
 
-//get course by courseID
+//get all courses
 app.get('/courses', async (req, res) => {
     try {
         const snapshot = await db.collection('courses').get();
